@@ -49,8 +49,12 @@
       <a target="_blank" href="https://firebase.google.com/docs/hosting/">Open Hosting Documentation</a>
     </div>
     <p id="load">Firebase SDK Loading&hellip;</p>
-    <div id="firebaseui-auth-container"></div>
-    <div id="loader">Loading...</div>
+
+    <input type="checkbox" id="email" name="email" value="true">
+    <label for="email"> Receive over email</label><br>
+
+    <input type="checkbox" id="push-notifications" name="push-notifications" value="true">
+    <label for="push-notifications"> Receive push notifications to browser</label><br>
 
     <script>
       document.addEventListener('DOMContentLoaded', function() {
@@ -58,7 +62,11 @@
         // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
         // // The Firebase SDK is initialized and available here!
         //
-        // firebase.auth().onAuthStateChanged(user => { });
+        var _user;
+        firebase.auth().onAuthStateChanged(user => {
+          if (!user) window.location.pathname = '';
+          _user = user;
+        });
         // firebase.database().ref('/path/to/ref').on('value', snapshot => { });
         // firebase.firestore().doc('/foo/bar').get().then(() => { });
         // firebase.functions().httpsCallable('yourFunction')().then(() => { });
@@ -70,43 +78,76 @@
         //
         // // 🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
 
-        var ui = new firebaseui.auth.AuthUI(firebase.auth());
+        var checkbox = document.querySelector("input[name=push-notifications]");
+
+        checkbox.addEventListener('change', function() {
+          updatePushNotificationsState(this.checked);
+        });
+
+        var checkbox1 = document.querySelector("input[name=email]");
+
+        checkbox1.addEventListener('change', function() {
+          updateReceiveEmails(this.checked);
+        });
 
 
-        var uiConfig = {
-          callbacks: {
-            signInSuccessWithAuthResult: function(authResult, redirectUrl) {
-              // User successfully signed in.
-              // Return type determines whether we continue the redirect automatically
-              // or whether we leave that to developer to handle.
-              return true;
-            },
-            uiShown: function() {
-              // The widget is rendered.
-              // Hide the loader.
-              document.getElementById('loader').style.display = 'none';
-            }
-          },
-          // Will use popup for IDP Providers sign-in flow instead of the default, redirect.
-          signInFlow: 'popup',
-          signInSuccessUrl: 'logged-in.html',
-          signInOptions: [
-            // Leave the lines as is for the providers you want to offer your users.
-            firebase.auth.GoogleAuthProvider.PROVIDER_ID,
-            firebase.auth.FacebookAuthProvider.PROVIDER_ID,
-            firebase.auth.TwitterAuthProvider.PROVIDER_ID,
-            firebase.auth.GithubAuthProvider.PROVIDER_ID,
-            firebase.auth.EmailAuthProvider.PROVIDER_ID,
-            firebase.auth.PhoneAuthProvider.PROVIDER_ID
-          ],
-          // Terms of service url.
-          tosUrl: '<your-tos-url>',
-          // Privacy policy url.
-          privacyPolicyUrl: '<your-privacy-policy-url>'
-        };
+        function updatePushNotificationsState(to) {
+          // init db
+          const db = firebase.firestore();
 
-        // The start method will wait until the DOM is loaded.
-        ui.start('#firebaseui-auth-container', uiConfig);
+          // Get registration token. Initially this makes a network call, once retrieved
+          // subsequent calls to getToken will return from cache.
+          const messaging = firebase.messaging();
+          messaging.requestPermission().then(() => 
+            messaging.getToken({ vapidKey: 'BHm09rldNm3sT-Gk9Apnc6KUB0e9-CKJWN25sXXvWoN_Znz5aSlRpLPsuDFvDUu5HzSK9Ie2rk7DEpxLuHn-E_I' })
+              .then((currentToken) => {
+                if (currentToken) {
+                  db.collection("tokens").doc(currentToken)
+                    .set({
+                        status: 'active',
+                        system: 'web',
+                        createdOn: new Date(),
+                        receive: to,
+                    }, { merge: true })
+                    .then(() => {
+                        console.log("Document successfully written!");
+                    })
+                    .catch((error) => {
+                        console.error("Error writing document: ", error);
+                    });
+                } else {
+                  // Show permission request UI
+                  console.log('No registration token available. Request permission to generate one.');
+                }
+              }).catch((err) => {
+                console.log('An error occurred while retrieving token. ', err);
+                // ...
+              })
+            );
+        }
+
+
+        function updateReceiveEmails(to) {
+          // init db
+          const db = firebase.firestore();
+
+          if (!_user) {
+            return alert('you are not logged in');
+          }
+
+          db.collection("users").doc(_user.uid)
+            .set({
+                email: _user.email,
+                createdOn: new Date(),
+                receive: to,
+            }, { merge: true })
+            .then(() => {
+                console.log("Document successfully written!");
+            })
+            .catch((error) => {
+                console.error("Error writing document: ", error);
+            });
+        }
 
         try {
           let app = firebase.app();
